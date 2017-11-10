@@ -1,0 +1,230 @@
+openapi: 3.0
+info:
+  description: Omega Diamond website backend spec.
+  version: 1.0.0
+  title: Omega Diamond Backend
+  termsOfService: https://omegadiamond.com/terms/
+servers: 
+- url: http://omegadiamond.local:5413/v1
+  description: Locally hosted development - make sure your hosts file is set first!
+- url: https://dev.omegadiamond.com/v1
+  description: Remote dev server.
+- url: https://omegadiamond.com/v1
+  description: Live server.
+security:
+  user_auth:
+  - "read:TODO"
+  - "write:TODO"
+
+# Customers need to:
+#  * See current prices, including sale prices that have special info start and end dates.  API would only be to allow fast price updates if we wanted...  Actually it's more than that: it's about not having a difference between what is client and what is server - critical that they match when the order is placed!
+#  * Optional API: Add products to a cart.  Does this cart need to be accessable from multiple devices?  If no, then use localstorage instead of API.  Could have option to "save cart".
+#  * Get a shipping quote: UPS or manual.  Manual means that the order processing will be postponed until handled by staff.
+#  * Submit contact info, a series of products, and shipment method as an order. Two stage process takes two endpoints. See https://developer.paypal.com/docs/integration/direct/express-checkout/integration-jsv4/server-side-REST-integration/
+# Admins need to:
+#  * NOT API: Add/Update pages via SSH connection.
+
+# Products are static data not served by the API.
+
+# URLs, remember to use HATEOS where applicable:
+  # GET /v1/products/000-000/price => returns JSON with product price.
+  # POST /v1/quotes/shipping => requires JSON of product IDs and qtys, returns status, and shipping quotes.
+  # PUT /v1/orders => requires JSON of product IDs and qtys, and the selected shipping quote ID, returns status, and PayPal txn ID.
+  # XXX POST /v1/orders/<guid> => requires JSON of product IDs and qtys, returns shipping quotes !!!Security hole unless authenticated!!!
+  # XXX PATCH /v1/orders/<guid> => requires JSON of product IDs and qtys, returns shipping quotes !!!Security hole unless authenticated!!!
+  # XXX GET /v1/orders/<guid> => Returns all details about an order !!!Security hole unless authenticated!!!
+  # POST /v1/orders/<guid>/ppexecutepayment => Parms: payment ID and payer ID, returns status (maybe?).
+
+
+components:
+  schemas:
+    orderEntryLine:
+      description: A line item for an order to be submitted.
+      type: object
+      properties:
+        prod_id:
+          type: string
+          pattern: "[0-9A-Za-z]{3}-[0-9A-Za-z]{3}"
+        uom:
+          type: string
+        qty:
+          type: number
+          format: float
+          minimum: 1.0
+    status:
+      description: Repsonse status details.  Useful when the server wants to report something that isn't an intrinsic error.  If null or missing there's no reported error.
+      type: object
+      properties:
+        code:
+          description: Machine parseable. Value 0 is an all-clear and implies that the description field may be missing.
+          type: integer
+          format: int32
+        description:
+          type: string
+paths:
+  /products/{product_id}/price:
+    get:
+      parameters:
+      - name: product_id
+        in: path
+        required: true
+      responses:
+        '200':
+          description: Returns prices for a given product ID.
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  status:
+                    $ref: "/components/schemas/status"
+                  msrp:
+                    type: number
+                    format: float
+                    minimum: 0.0
+                  online:
+                    type: number
+                    format: float
+                    minimum: 0.0
+                  sale:
+                    type: number
+                    format: float
+                    minimum: 0.0
+  /quotes/shipping:
+    post:
+      requestBody:
+        content:
+          'application/json':
+            schema:
+              properties:
+                products:
+                  description: An array of products to be part of the order.
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: "#/components/schemas/orderEntryLine"
+              required:
+              - products
+      responses:
+        '200':
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  status:
+                    $ref: "/components/schemas/status"
+                  shipping_quotes:
+                    description: Contains the returned shipping quotes for the order.
+                    type: object
+                    parameters:
+                      carriers:
+                        type: array
+                        items:
+                          type: object
+                          parameters:
+                            name:
+                              description: Display name of the carrier
+                              type: string
+                            quotes:
+                              type: array
+                              items:
+                                type: object
+                                parameters:
+                                  name:
+                                    description: Shipment method display name
+                                    type: string
+                                  id:
+                                    description: The ID of this shipment method.  The idea here is that the ID is what's sent in the completion order, not the price.
+                                    type: string
+                                  expected_price:
+                                    type: number
+                                    format: float
+  /orders:
+    put:
+      description: Submits an order for processing, returns links for 
+      requestBody:
+        content:
+          'application/json':
+            schema:
+              properties:
+                products:
+                  description: An array of products to be part of the order.
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: "#/components/schemas/orderEntryLine"
+                shipping:
+                  description: The ID of the seleced shipment method as returned by /quotes/shipping.
+                  type: string
+                payment_method:
+                  description: If omitted defaults to "PayPal"
+                  type: string
+                  enum:
+                  - PayPal
+              required:
+              - products
+              - shipping
+      responses:
+        '200':
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  status:
+                    $ref: "/components/schemas/status"
+                  payment:
+                    type: object
+                    parameters:
+                      paypal:
+                        type: object
+                        parameters:
+                          transaction_id:
+                            type: string
+                  links:
+                    type: array
+                    items:
+                      type: object
+                      parameters:
+                        href:
+                          type: string
+                          format: url
+                        rel:
+                          type: string
+                        operation:
+                          type: string
+                          enum:
+                          - GET
+                          - PUT
+                          - POST
+                          - DELETE
+                          - PATCH
+  /orders/{order_id}/ppexecutepayment:
+    post:
+      parameters:
+      - name: order_id
+        in: path
+        required: true
+      requestBody:
+        content:
+          'application/json':
+            schema:
+              properties:
+                payment_id:
+                  type: string
+                payer_id:
+                  type: string
+              required:
+              - payment_id
+              - payer_id
+      responses:
+        '200':
+          content:
+            'application/json':
+              schema:
+                type: object
+                properties:
+                  status:
+                    $ref: "/components/schemas/status"
+
