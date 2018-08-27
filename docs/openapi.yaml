@@ -52,7 +52,7 @@ components:
           format: float
           minimum: 1.0
     status:
-      description: Repsonse status details.  Useful when the server wants to report something that isn't an intrinsic error.  If null or missing there's no reported error.
+      description: Response status details.  Useful when the server wants to report something that isn't an intrinsic error.  If null or missing there's no reported error.
       type: object
       properties:
         code:
