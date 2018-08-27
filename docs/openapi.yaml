@@ -61,6 +61,11 @@ components:
           format: int32
         description:
           type: string
+    shipping_address:
+      description: Address of where to deliver to product to.
+      type: object
+      properties:
+        
 paths:
   /products/{product_id}/price:
     get:
@@ -103,6 +108,8 @@ paths:
                   minItems: 1
                   items:
                     $ref: "#/components/schemas/orderEntryLine"
+                destination:
+                  $ref: "/components/schemas/shipping_address"
               required:
               - products
       responses:
